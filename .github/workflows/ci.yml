@@ -1,0 +1,126 @@
+name: CI — Manajemen Kost
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+      - "feat/**"
+  pull_request:
+    branches:
+      - master
+      - dev
+      - "feat/**"
+
+jobs:
+  # ===========================================================================
+  # JOB 1 — Backend: php artisan test (Laravel 12 + Sanctum + MySQL service)
+  # ===========================================================================
+  backend-test:
+    name: Backend — PHP Artisan Test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: uts_kepl_test
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout kode sumber
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.2 dengan ekstensi yang dibutuhkan
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo, pdo_mysql, mysql, xml, ctype, tokenizer, bcmath, dom, fileinfo, intl
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --optimize-autoloader
+
+      - name: Salin file .env untuk pengujian
+        run: cp .env.example .env
+
+      - name: Generate application key
+        run: php artisan key:generate --ansi
+
+      - name: Jalankan migrasi ke database pengujian MySQL
+        run: php artisan migrate --force --no-interaction
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: uts_kepl_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+
+      - name: Jalankan php artisan test
+        run: php artisan test --no-interaction
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: uts_kepl_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+          MAIL_MAILER: array
+          BROADCAST_CONNECTION: log
+
+  # ===========================================================================
+  # JOB 2 — Frontend: npm ci + npm run build (Vite + Vue 3 + TypeScript)
+  # ===========================================================================
+  frontend-build:
+    name: Frontend — npm ci & npm run build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout kode sumber
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies (npm ci)
+        run: npm ci --ignore-scripts
+
+      - name: Buat file .env untuk Vite build
+        run: |
+          echo "VITE_API_BASE_URL=http://127.0.0.1:8000/api" > .env
+
+      - name: Build production bundle (npm run build)
+        run: npm run build
