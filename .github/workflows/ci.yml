@@ -78,7 +78,7 @@ jobs:
           DB_PASSWORD: root
 
       - name: Jalankan php artisan test
-        run: php artisan test --no-interaction
+        run: php artisan test
         env:
           APP_ENV: testing
           DB_CONNECTION: mysql
