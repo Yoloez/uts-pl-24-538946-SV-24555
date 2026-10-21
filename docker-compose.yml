@@ -1,0 +1,88 @@
+services:
+  # ===========================================================================
+  # 1. SERVICE BASIS DATA (MySQL 8.0)
+  # ===========================================================================
+  database:
+    image: mysql:8.0
+    container_name: kost_database
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-kost_db}
+      MYSQL_USER: ${DB_USERNAME:-kost_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-kost_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
+    ports:
+      - "${FORWARD_DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - kost_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-root_password}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ===========================================================================
+  # 2. SERVICE BACKEND (Laravel 12 + FrankenPHP)
+  # Terhubung ke database via nama service 'database'
+  # ===========================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kost_backend
+    restart: unless-stopped
+    environment:
+      APP_NAME: ${APP_NAME:-KostManagement}
+      APP_ENV: ${APP_ENV:-production}
+      APP_KEY: ${APP_KEY:-base64:9U1mE1Qe1u2S8d4F7g3H0j5K6l7Z8x9C0v1B2n3M4=}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      DB_CONNECTION: mysql
+      DB_HOST: database
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-kost_db}
+      DB_USERNAME: ${DB_USERNAME:-kost_user}
+      DB_PASSWORD: ${DB_PASSWORD:-kost_password}
+      SERVER_NAME: ":8000"
+    ports:
+      - "${FORWARD_BACKEND_PORT:-8000}:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - kost_network
+
+  # ===========================================================================
+  # 3. SERVICE FRONTEND (Vue 3 + Vite + Nginx Reverse Proxy)
+  # Terhubung ke backend via nama service 'backend' di jaringan Docker Compose
+  # ===========================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+    container_name: kost_frontend
+    restart: unless-stopped
+    ports:
+      - "${FORWARD_FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+    networks:
+      - kost_network
+
+# =============================================================================
+# NAMED VOLUMES (Data MySQL tetap aman saat docker compose down)
+# =============================================================================
+volumes:
+  mysql_data:
+    driver: local
+
+# =============================================================================
+# NETWORKS (Seluruh service saling berkomunikasi melalui nama service)
+# =============================================================================
+networks:
+  kost_network:
+    driver: bridge

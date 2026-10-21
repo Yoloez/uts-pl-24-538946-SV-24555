@@ -1,0 +1,185 @@
+name: CI/CD — Manajemen Kost
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+      - "feat/**"
+  pull_request:
+    branches:
+      - master
+      - dev
+      - "feat/**"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # ===========================================================================
+  # JOB 1 — Backend: PHP Artisan Test (Laravel 12 + Sanctum + MySQL Service)
+  # ===========================================================================
+  backend-test:
+    name: Backend — PHP Artisan Test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: uts_kepl_test
+          MYSQL_ROOT_PASSWORD: ${{ secrets.DB_PASSWORD || 'root' }}
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout kode sumber
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.2 dengan ekstensi yang dibutuhkan
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo, pdo_mysql, mysql, xml, ctype, tokenizer, bcmath, dom, fileinfo, intl
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --optimize-autoloader
+
+      - name: Salin file .env untuk pengujian
+        run: cp .env.example .env
+
+      - name: Konfigurasi APP_KEY dari GitHub Secrets atau generate otomatis
+        run: |
+          if [ -n "${{ secrets.APP_KEY }}" ]; then
+            echo "Menggunakan APP_KEY dari GitHub Secrets"
+            sed -i 's|^APP_KEY=.*|APP_KEY=${{ secrets.APP_KEY }}|' .env
+          else
+            echo "APP_KEY dari Secrets kosong, membuat key baru..."
+            php artisan key:generate --ansi
+          fi
+
+      - name: Jalankan migrasi ke database pengujian MySQL
+        run: php artisan migrate --force --no-interaction
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: uts_kepl_test
+          DB_USERNAME: root
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD || 'root' }}
+
+      - name: Jalankan php artisan test
+        run: php artisan test
+        env:
+          APP_ENV: testing
+          APP_KEY: ${{ secrets.APP_KEY }}
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: uts_kepl_test
+          DB_USERNAME: root
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD || 'root' }}
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+          MAIL_MAILER: array
+          BROADCAST_CONNECTION: log
+
+  # ===========================================================================
+  # JOB 2 — Frontend: npm ci + npm run build (Vite + Vue 3 + TypeScript)
+  # ===========================================================================
+  frontend-build:
+    name: Frontend — npm ci & npm run build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout kode sumber
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies (npm ci)
+        run: npm ci --ignore-scripts
+
+      - name: Buat file .env untuk Vite build
+        run: |
+          echo "VITE_API_BASE_URL=http://127.0.0.1:8000/api" > .env
+
+      - name: Build production bundle (npm run build)
+        run: npm run build
+
+  # ===========================================================================
+  # JOB 3 — Deploy: Build & Push Docker Images ke GHCR (ghcr.io)
+  # Syarat a: Hanya berjalan untuk push ke branch main (atau master jika digunakan)
+  # Syarat b: Nilai rahasia APP_KEY & DB_PASSWORD disimpan di GitHub Secrets
+  # Syarat c: Tag image memakai nomor commit (${{ github.sha }}), bukan latest
+  # ===========================================================================
+  deploy:
+    name: Deploy — Build & Push Docker Images ke GHCR
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    # Hanya berjalan saat event push ke branch main (atau master), tidak jalan di PR/dev/feat
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - name: Checkout kode sumber
+        uses: actions/checkout@v4
+
+      - name: Format repository name menjadi huruf kecil (syarat GHCR)
+        run: |
+          echo "IMAGE_REPOSITORY=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login ke GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Docker Image Backend ke GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.IMAGE_REPOSITORY }}/backend:${{ github.sha }}
+
+      - name: Build & Push Docker Image Frontend ke GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.IMAGE_REPOSITORY }}/frontend:${{ github.sha }}
