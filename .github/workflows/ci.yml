@@ -1,4 +1,4 @@
-name: CI — Manajemen Kost
+name: CI/CD — Manajemen Kost
 
 on:
   push:
@@ -12,9 +12,13 @@ on:
       - dev
       - "feat/**"
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   # ===========================================================================
-  # JOB 1 — Backend: php artisan test (Laravel 12 + Sanctum + MySQL service)
+  # JOB 1 — Backend: PHP Artisan Test (Laravel 12 + Sanctum + MySQL Service)
   # ===========================================================================
   backend-test:
     name: Backend — PHP Artisan Test
@@ -29,7 +33,7 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_DATABASE: uts_kepl_test
-          MYSQL_ROOT_PASSWORD: root
+          MYSQL_ROOT_PASSWORD: ${{ secrets.DB_PASSWORD || 'root' }}
         ports:
           - 3306:3306
         options: >-
@@ -63,8 +67,15 @@ jobs:
       - name: Salin file .env untuk pengujian
         run: cp .env.example .env
 
-      - name: Generate application key
-        run: php artisan key:generate --ansi
+      - name: Konfigurasi APP_KEY dari GitHub Secrets atau generate otomatis
+        run: |
+          if [ -n "${{ secrets.APP_KEY }}" ]; then
+            echo "Menggunakan APP_KEY dari GitHub Secrets"
+            sed -i 's|^APP_KEY=.*|APP_KEY=${{ secrets.APP_KEY }}|' .env
+          else
+            echo "APP_KEY dari Secrets kosong, membuat key baru..."
+            php artisan key:generate --ansi
+          fi
 
       - name: Jalankan migrasi ke database pengujian MySQL
         run: php artisan migrate --force --no-interaction
@@ -75,18 +86,19 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: uts_kepl_test
           DB_USERNAME: root
-          DB_PASSWORD: root
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD || 'root' }}
 
       - name: Jalankan php artisan test
         run: php artisan test
         env:
           APP_ENV: testing
+          APP_KEY: ${{ secrets.APP_KEY }}
           DB_CONNECTION: mysql
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
           DB_DATABASE: uts_kepl_test
           DB_USERNAME: root
-          DB_PASSWORD: root
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD || 'root' }}
           CACHE_STORE: array
           SESSION_DRIVER: array
           QUEUE_CONNECTION: sync
@@ -124,3 +136,50 @@ jobs:
 
       - name: Build production bundle (npm run build)
         run: npm run build
+
+  # ===========================================================================
+  # JOB 3 — Deploy: Build & Push Docker Images ke GHCR (ghcr.io)
+  # Syarat a: Hanya berjalan untuk push ke branch main (atau master jika digunakan)
+  # Syarat b: Nilai rahasia APP_KEY & DB_PASSWORD disimpan di GitHub Secrets
+  # Syarat c: Tag image memakai nomor commit (${{ github.sha }}), bukan latest
+  # ===========================================================================
+  deploy:
+    name: Deploy — Build & Push Docker Images ke GHCR
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    # Hanya berjalan saat event push ke branch main (atau master), tidak jalan di PR/dev/feat
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - name: Checkout kode sumber
+        uses: actions/checkout@v4
+
+      - name: Format repository name menjadi huruf kecil (syarat GHCR)
+        run: |
+          echo "IMAGE_REPOSITORY=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login ke GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Docker Image Backend ke GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.IMAGE_REPOSITORY }}/backend:${{ github.sha }}
+
+      - name: Build & Push Docker Image Frontend ke GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.IMAGE_REPOSITORY }}/frontend:${{ github.sha }}
