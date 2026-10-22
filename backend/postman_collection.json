@@ -1,0 +1,520 @@
+{
+  "info": {
+    "_postman_id": "b3e94471-92b1-4770-9824-340cb221b65b",
+    "name": "Manajemen Kost API",
+    "description": "Postman Collection lengkap untuk pengujian seluruh endpoint API Manajemen Kost-Kostan (Laravel 12 + Sanctum).\n\nFitur:\n- Autentikasi Token (Sanctum)\n- CRUD Lengkap Resource Kamar (Rooms)\n- Fitur Role Admin (Kelola kamar, lihat penghuni kamar, hapus user dari kamar)\n- Fitur Role Penghuni (Booking kamar, pantau fasilitas, checkout)\n\nCatatan: Token otomatis tersimpan ke variabel koleksi saat mengeksekusi request Login.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000/api",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "room_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "2",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "01. Health Check",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Memeriksa status aktif server API backend."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02. Authentication",
+      "item": [
+        {
+          "name": "Login as Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var res = pm.response.json();",
+                  "    if (res.access_token) {",
+                  "        pm.collectionVariables.set('token', res.access_token);",
+                  "        console.log('Token Admin tersimpan:', res.access_token);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@kost.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": ["{{base_url}}"],
+              "path": ["login"]
+            },
+            "description": "Login sebagai Admin. Token otomatis disimpan ke variabel {{token}}."
+          },
+          "response": []
+        },
+        {
+          "name": "Login as Penghuni",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var res = pm.response.json();",
+                  "    if (res.access_token) {",
+                  "        pm.collectionVariables.set('token', res.access_token);",
+                  "        console.log('Token Penghuni tersimpan:', res.access_token);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"penghuni@kost.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": ["{{base_url}}"],
+              "path": ["login"]
+            },
+            "description": "Login sebagai Penghuni Kos. Token otomatis disimpan ke variabel {{token}}."
+          },
+          "response": []
+        },
+        {
+          "name": "Register Akun Baru",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var res = pm.response.json();",
+                  "    if (res.access_token) {",
+                  "        pm.collectionVariables.set('token', res.access_token);",
+                  "    }",
+                  "    if (res.user && res.user.id) {",
+                  "        pm.collectionVariables.set('user_id', res.user.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Siti Nurhaliza\",\n  \"email\": \"siti@kost.com\",\n  \"password\": \"password123\",\n  \"role\": \"penghuni\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/register",
+              "host": ["{{base_url}}"],
+              "path": ["register"]
+            },
+            "description": "Mendaftarkan user baru (role default: 'penghuni'). Mengembalikan status 201 Created."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Profile (Me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/me",
+              "host": ["{{base_url}}"],
+              "path": ["me"]
+            },
+            "description": "Mendapatkan data pengguna yang sedang login saat ini berdasarkan Bearer Token."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/logout",
+              "host": ["{{base_url}}"],
+              "path": ["logout"]
+            },
+            "description": "Menghapus token yang sedang aktif di database (revoking Bearer Token)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03. Manajemen Kamar (CRUD)",
+      "item": [
+        {
+          "name": "Tampil Semua Kamar (Read All)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/rooms",
+              "host": ["{{base_url}}"],
+              "path": ["rooms"]
+            },
+            "description": "Mendapatkan seluruh daftar kamar kos beserta status ketersediaan dan jumlah penghuni."
+          },
+          "response": []
+        },
+        {
+          "name": "Tampil Detail Satu Kamar (Read One)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/rooms/{{room_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["rooms", "{{room_id}}"]
+            },
+            "description": "Melihat detail spesifikasi 1 kamar kos (tipe, harga, fasilitas, status, dan penghuni aktif)."
+          },
+          "response": []
+        },
+        {
+          "name": "Tambah Kamar Baru (Create - Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var res = pm.response.json();",
+                  "    if (res.data && res.data.id) {",
+                  "        pm.collectionVariables.set('room_id', res.data.id);",
+                  "        console.log('ID Kamar baru tersimpan ke {{room_id}}:', res.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"room_number\": \"D401\",\n  \"type\": \"Executive Suite\",\n  \"price\": 3000000,\n  \"capacity\": 2,\n  \"facilities\": \"AC, Smart TV 43 Inch, Kamar Mandi Dalam Bathtub, Water Heater, Meja Kerja, WiFi 100Mbps\",\n  \"description\": \"Kamar tipe executive paling mewah di lantai 4 dengan pemandangan pegunungan.\",\n  \"status\": \"available\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rooms",
+              "host": ["{{base_url}}"],
+              "path": ["rooms"]
+            },
+            "description": "Menambahkan kamar kos baru ke basis data (Khusus role Admin). Mengembalikan kode status 201 Created."
+          },
+          "response": []
+        },
+        {
+          "name": "Ubah Data Kamar (Update - Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"Executive Suite Plus\",\n  \"price\": 3200000,\n  \"capacity\": 2,\n  \"facilities\": \"AC, Smart TV 50 Inch, Bathtub, Water Heater, Kulkas Mini, WiFi 100Mbps\",\n  \"description\": \"Kamar tipe executive dengan upgrade TV dan kulkas mini.\",\n  \"status\": \"available\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rooms/{{room_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["rooms", "{{room_id}}"]
+            },
+            "description": "Mengubah spesifikasi data kamar kos (Khusus role Admin). Mengembalikan status 200 OK."
+          },
+          "response": []
+        },
+        {
+          "name": "Hapus Kamar (Delete - Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/rooms/{{room_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["rooms", "{{room_id}}"]
+            },
+            "description": "Menghapus kamar kos dari database (Khusus role Admin). Mengembalikan status 200 OK."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04. Fitur Penghuni Kos",
+      "item": [
+        {
+          "name": "Booking Kamar (Penghuni)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Mohon siapkan kamar sebelum tanggal 1.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rooms/{{room_id}}/book",
+              "host": ["{{base_url}}"],
+              "path": ["rooms", "{{room_id}}", "book"]
+            },
+            "description": "Penghuni melakukan booking kamar kos. Mengembalikan status 201 Created."
+          },
+          "response": []
+        },
+        {
+          "name": "Memantau Kamar Saya & Fasilitas (My Room)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/my-room",
+              "host": ["{{base_url}}"],
+              "path": ["my-room"]
+            },
+            "description": "Penghuni memantau kamar yang saat ini ditempati, fasilitas yang diperoleh, dan riwayat booking aktif."
+          },
+          "response": []
+        },
+        {
+          "name": "Memantau Fasilitas Kamar Tertentu",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/rooms/{{room_id}}/facilities",
+              "host": ["{{base_url}}"],
+              "path": ["rooms", "{{room_id}}", "facilities"]
+            },
+            "description": "Melihat rincian fasilitas dari kamar tertentu."
+          },
+          "response": []
+        },
+        {
+          "name": "Checkout dari Kamar (Penghuni)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/checkout",
+              "host": ["{{base_url}}"],
+              "path": ["checkout"]
+            },
+            "description": "Penghuni melakukan checkout dari kamar kos. Mengosongkan status hunian dan mengubah status kamar."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "05. Fitur Admin - Kelola Penghuni Kamar",
+      "item": [
+        {
+          "name": "Melihat Siapa Saja di Kamar (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/rooms/{{room_id}}/occupants",
+              "host": ["{{base_url}}"],
+              "path": ["rooms", "{{room_id}}", "occupants"]
+            },
+            "description": "Admin melihat siapa saja user/penghuni yang menempati kamar kos tertentu."
+          },
+          "response": []
+        },
+        {
+          "name": "Hapus User dari Kamar Tertentu (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/rooms/{{room_id}}/occupants/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["rooms", "{{room_id}}", "occupants", "{{user_id}}"]
+            },
+            "description": "Admin mengeluarkan/menghapus user tertentu dari kamar kos yang ditempatinya."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
