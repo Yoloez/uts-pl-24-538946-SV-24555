@@ -1,7 +1,21 @@
 #!/bin/sh
 set -e
 
-# Generate APP_KEY if not configured
+# 1. Salin .env.example jika .env belum ada di dalam container
+if [ ! -f .env ]; then
+    if [ -f .env.example ]; then
+        echo "Menyalin .env.example ke .env..."
+        cp .env.example .env
+    fi
+fi
+
+# 2. Pastikan DB_HOST mengarah ke service 'database' di jaringan Docker Compose
+if [ -f .env ]; then
+    sed -i 's/DB_HOST=127.0.0.1/DB_HOST=database/g' .env 2>/dev/null || true
+    sed -i 's/DB_HOST=localhost/DB_HOST=database/g' .env 2>/dev/null || true
+fi
+
+# 3. Generate APP_KEY jika belum terisi
 if [ -z "$APP_KEY" ]; then
     if [ ! -f .env ] || ! grep -q "APP_KEY=base64:" .env 2>/dev/null; then
         echo "Mengenerate application key..."
@@ -9,33 +23,51 @@ if [ -z "$APP_KEY" ]; then
     fi
 fi
 
-# Tunggu database MySQL siap menerima koneksi
-echo "Menunggu koneksi MySQL di ${DB_HOST:-database}:${DB_PORT:-3306}..."
+# 4. Tunggu database MySQL siap menerima koneksi (disesuaikan dengan backend/.env)
+echo "Menunggu koneksi database MySQL..."
 MAX_TRIES=30
 COUNT=0
-until php -r "
-try {
-    \$host = getenv('DB_HOST') ?: 'database';
-    \$port = getenv('DB_PORT') ?: '3306';
-    \$db   = getenv('DB_DATABASE') ?: 'kost_db';
-    \$user = getenv('DB_USERNAME') ?: 'kost_user';
-    \$pass = getenv('DB_PASSWORD') ?: 'kost_password';
-    new PDO(\"mysql:host=\$host;port=\$port;dbname=\$db\", \$user, \$pass, [PDO::ATTR_TIMEOUT => 2]);
-    exit(0);
-} catch (Exception \$e) {
-    exit(1);
-}
-" 2>/dev/null; do
+READY=0
+
+while [ $COUNT -lt $MAX_TRIES ]; do
     COUNT=$((COUNT + 1))
-    if [ $COUNT -ge $MAX_TRIES ]; then
-        echo "Batas waktu tunggu koneksi MySQL tercapai!"
+    RESULT=$(php -r '
+    try {
+        $host = getenv("DB_HOST") ?: "database";
+        if ($host === "127.0.0.1" || $host === "localhost") {
+            $host = "database";
+        }
+        $port = getenv("DB_PORT") ?: "3306";
+        $db   = getenv("DB_DATABASE") ?: "uts-kepl";
+        $user = getenv("DB_USERNAME") ?: "root";
+        $pass = getenv("DB_PASSWORD") !== false ? getenv("DB_PASSWORD") : "";
+
+        $pdo = new PDO("mysql:host=$host;port=$port", $user, $pass, [
+            PDO::ATTR_TIMEOUT => 2,
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+        ]);
+
+        $pdo->exec("CREATE DATABASE IF NOT EXISTS `$db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;");
+        echo "SUCCESS";
+    } catch (Throwable $e) {
+        echo "ERROR: " . $e->getMessage();
+    }
+    ' 2>&1)
+
+    if [ "$RESULT" = "SUCCESS" ]; then
+        echo "Koneksi database berhasil dan database siap!"
+        READY=1
         break
+    else
+        echo "MySQL belum siap ($COUNT/$MAX_TRIES): $RESULT"
+        sleep 2
     fi
-    echo "MySQL belum siap, menunggu 2 detik... ($COUNT/$MAX_TRIES)"
-    sleep 2
 done
 
-echo "Koneksi database berhasil!"
+if [ $READY -eq 0 ]; then
+    echo "Peringatan: Melebihi batas waktu tunggu MySQL, melanjutkan proses..."
+fi
+
 echo "Menjalankan migrasi database..."
 php artisan migrate --force --no-interaction
 
