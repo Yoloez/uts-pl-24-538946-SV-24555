@@ -4,7 +4,7 @@ import axios, { type AxiosInstance, type InternalAxiosRequestConfig, type AxiosR
  * Alamat API diambil dari file konfigurasi environment (.env / VITE_API_BASE_URL).
  * Tidak ditulis secara hardcoded di dalam komponen.
  */
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
